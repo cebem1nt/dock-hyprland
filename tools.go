@@ -56,7 +56,7 @@ func pinnedButton(ID string, position *string) *gtk.Box {
 	button.Connect("clicked", func() {
 		launch(ID)
 	})
-
+	
 	button.Connect("button-release-event", func(btn *gtk.Button, e *gdk.Event) bool {
 		btnEvent := e.AsButton()
 		if btnEvent.Button() == 1 || btnEvent.Button() == 2 {
@@ -64,6 +64,22 @@ func pinnedButton(ID string, position *string) *gtk.Box {
 			return true
 		} else if btnEvent.Button() == 3 {
 			contextMenu := pinnedMenuContext(ID)
+
+			if *autohide {
+				contextMenu.Connect("hide", func() {
+					mouseInsideDock = false
+
+					glib.TimeoutAdd(2000, func() bool {
+
+						if !mouseInsideDock {
+							win.Hide()
+						}
+
+						return false
+					})
+				})
+			}
+
 			contextMenu.PopupAtWidget(button, widgetAnchor, menuAnchor, nil)
 			return true
 		}
@@ -279,6 +295,22 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 					return true
 				} else if btnEvent.Button() == 3 {
 					contextMenu := clientMenuContext(t.Class, instances)
+
+					if *autohide {
+						contextMenu.Connect("hide", func() {
+							mouseInsideDock = false
+
+							glib.TimeoutAdd(2000, func() bool {
+
+								if !mouseInsideDock {
+									win.Hide()
+								}
+
+								return false
+							})
+						})
+					}
+
 					contextMenu.PopupAtWidget(button, widgetAnchor, menuAnchor, nil)
 					return true
 				}
@@ -297,6 +329,22 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 				return true
 			} else if btnEvent.Button() == 3 {
 				contextMenu := clientMenuContext(t.Class, instances)
+
+				if *autohide {
+					contextMenu.Connect("hide", func() {
+						mouseInsideDock = false
+
+						glib.TimeoutAdd(2000, func() bool {
+
+							if !mouseInsideDock {
+								win.Hide()
+							}
+
+							return false
+						})
+					})
+				}
+
 				contextMenu.PopupAtWidget(button, widgetAnchor, menuAnchor, nil)
 				return true
 			}
@@ -456,8 +504,8 @@ func clientMenuContext(class string, instances []client) gtk.Menu {
 		})
 	}
 	menu.Append(pinItem)
-
 	menu.ShowAll()
+
 	return *menu
 }
 
@@ -947,18 +995,9 @@ func launch(ID string) {
 		}
 	}
 
-	cmd := exec.Command(elements[cmdIdx], elements[1+cmdIdx:]...)
+	cmd := fmt.Sprintf("dispatch exec %s", command)
 
-	// set env variables
-	if len(envVars) > 0 {
-		cmd.Env = os.Environ()
-		cmd.Env = append(cmd.Env, envVars...)
-	}
-
-	msg := fmt.Sprintf("env vars: %s; command: '%s'; args: %s\n", envVars, elements[cmdIdx], args)
-	log.Info(msg)
-
-	if err := cmd.Start(); err != nil {
+	if _, err := hyprctl(cmd); err != nil {
 		log.Error("Unable to launch command!", err.Error())
 	}
 

@@ -35,6 +35,7 @@ type WindowState int
 const (
 	WindowShow WindowState = iota
 	WindowHide
+	cooldown = 300 * time.Millisecond
 )
 
 var (
@@ -62,6 +63,7 @@ var (
 	classesToIgnore                    []string
 	mouseInsideDock                    bool
 	mouseInsideHotspot                 bool
+	locked							   bool
 )
 
 // Flags
@@ -273,35 +275,31 @@ func setupHotSpot(monitor gdk.Monitor, dockWindow *gtk.Window) gtk.Window {
 		box.PackEnd(detectorBox, false, false, 0)
 	}
 
-	detectorBox.Connect("enter-notify-event", func() {
-		detectorEnteredAt = time.Now().UnixNano() / 1000000
-	})
-
-	hotspotBox := gtk.NewEventBox()
-	hotspotBox.SetObjectProperty("name", "hotspot-box")
-
-	if *position == "bottom" {
-		box.PackStart(hotspotBox, false, false, 0)
-	} else {
-		box.PackEnd(hotspotBox, false, false, 0)
-	}
-
-	hotspotBox.Connect("enter-notify-event", func() {
-		hotspotEnteredAt := time.Now().UnixNano() / 1000000
-		delay := hotspotEnteredAt - detectorEnteredAt
-		gtklayershell.SetMonitor(dockWindow, &monitor)
-		if delay <= *hotspotDelay || *hotspotDelay == 0 {
-			log.Debugf("Delay %v < %v ms, let's show the window!", delay, *hotspotDelay)
-			dockWindow.Hide()
-			dockWindow.Show()
-		} else {
-			log.Debugf("Delay %v > %v ms, don't show the window :/", delay, *hotspotDelay)
+	// Toggle dock on click only
+	detectorBox.Connect("button-press-event", func() {
+		if locked { 
+			return 
 		}
+		
+		locked = true
+
+		if !dockWindow.IsVisible() { 
+			dockWindow.Show() 
+		} else { 
+			dockWindow.Hide() 
+		}
+		
+		go func() {
+			time.Sleep(cooldown)
+			glib.IdleAdd(func() { 
+				locked = false 
+			})
+		}()
 	})
 
 	if *position == "bottom" || *position == "top" {
 		detectorBox.SetSizeRequest(w, h/3)
-		hotspotBox.SetSizeRequest(w, 2)
+
 		if *position == "bottom" {
 			gtklayershell.SetAnchor(win, gtklayershell.LayerShellEdgeBottom, true)
 		} else {
@@ -314,7 +312,7 @@ func setupHotSpot(monitor gdk.Monitor, dockWindow *gtk.Window) gtk.Window {
 
 	if *position == "left" || *position == "right" {
 		detectorBox.SetSizeRequest(w/3, h)
-		hotspotBox.SetSizeRequest(2, h)
+
 		if *position == "left" {
 			gtklayershell.SetAnchor(win, gtklayershell.LayerShellEdgeLeft, true)
 		} else {
@@ -347,12 +345,6 @@ func setupHotSpot(monitor gdk.Monitor, dockWindow *gtk.Window) gtk.Window {
 			mouseInsideHotspot = true
 		})
 	}
-
-	// resolve #65
-	// gtklayershell.SetMargin(win, gtklayershell.LayerShellEdgeTop, *marginTop)
-	// gtklayershell.SetMargin(win, gtklayershell.LayerShellEdgeLeft, *marginLeft)
-	// gtklayershell.SetMargin(win, gtklayershell.LayerShellEdgeRight, *marginRight)
-	// gtklayershell.SetMargin(win, gtklayershell.LayerShellEdgeBottom, *marginBottom)
 
 	gtklayershell.SetExclusiveZone(win, -1)
 
