@@ -13,7 +13,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -101,6 +100,7 @@ func buildMainBox() {
 	if mainBox != nil {
 		mainBox.Destroy()
 	}
+
 	mainBox = gtk.NewBox(innerOrientation, 0)
 
 	if *alignment == "start" {
@@ -123,15 +123,6 @@ func buildMainBox() {
 			allItems = append(allItems, cntPin)
 		}
 	}
-
-	// actually unnecessary in recent Hyprland versions, but just in case, see #44.
-	sort.Slice(clients, func(i, j int) bool {
-		if clients[i].Workspace.Id != clients[j].Workspace.Id {
-			return clients[i].Workspace.Id < clients[j].Workspace.Id
-		} else {
-			return clients[i].Class < clients[j].Class
-		}
-	})
 
 	// delete the clients that are on ignored workspaces
 	clients = slices.DeleteFunc(clients, func(cl client) bool {
@@ -648,16 +639,16 @@ func main() {
 	})
 
 	// Close the window on leave, but not immediately, to avoid accidental closes
-	win.Connect("leave-notify-event", func() {
-		if *autohide {
+	if *autohide {
+		win.Connect("leave-notify-event", func() {
 			src = glib.TimeoutAdd(uint(1000), func() bool {
 				mouseInsideDock = false
 				win.Hide()
 				src = 0
 				return false
 			})
-		}
-	})
+		})
+	}
 
 	win.Connect("enter-notify-event", func() {
 		mouseInsideDock = true
@@ -675,8 +666,8 @@ func main() {
 	// We'll pack mainBox later, in buildMainBox
 
 	oldClients = clients
-	refreshMainBox := func(forceRefresh bool) {
-		if forceRefresh || (len(clients) != len(oldClients)) {
+	refreshMainBox := func() {
+		if len(clients) != len(oldClients) {
 			glib.TimeoutAdd(0, func() bool {
 				buildMainBox()
 				oldClients = clients
@@ -689,8 +680,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Couldn't list clients: %s", err)
 	}
-	buildMainBox()
 
+	buildMainBox()
 	win.ShowAll()
 
 	if *autohide {
@@ -775,14 +766,14 @@ func main() {
 			}
 
 			s := string(buf[:n])
-			if strings.Contains(s, "activewindowv2") {
-				winAddr := strings.TrimSpace(strings.Split(s, "activewindowv2>>")[1])
-				if winAddr != lastWinAddr && !strings.Contains(winAddr, ">>") {
+			if strings.Contains(s, "openwindow") || strings.Contains(s, "closewindow") {
+				winAddr := strings.TrimSpace(strings.Split(s, ">>")[1])
+				if winAddr != lastWinAddr {
 					err = listClients()
 					if err != nil {
 						log.Fatalf("Couldn't list clients: %s", err)
 					} else {
-						refreshMainBox(true)
+						refreshMainBox()
 					}
 					lastWinAddr = winAddr
 				}

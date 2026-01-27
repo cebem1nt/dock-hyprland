@@ -447,8 +447,11 @@ func clientMenuContext(class string, instances []client) gtk.Menu {
 		subitem = gtk.NewMenuItemWithLabel("fullscreen")
 		submenu.Append(subitem)
 		subitem.Connect("activate", func() {
-			cmd := fmt.Sprintf("dispatch fullscreen address:%s", a)
+			cmd := fmt.Sprintf("dispatch focuswindow address:%s", a)
 			reply, _ := hyprctl(cmd)
+
+			cmd = fmt.Sprintf("dispatch fullscreen address:%s", a)
+			reply, _ = hyprctl(cmd)
 			log.Debugf("%s -> %s", cmd, reply)
 		})
 
