@@ -62,7 +62,7 @@ var (
 	classesToIgnore                    []string
 	mouseInsideDock                    bool
 	mouseInsideHotspot                 bool
-	locked							   bool
+	locked                             bool
 )
 
 // Flags
@@ -169,30 +169,34 @@ func buildMainBox() {
 		} else {
 			instances := taskInstances(pin)
 			c := instances[0]
-			if !isIn(classesToIgnore, c.Class) {
-				if len(instances) == 1 {
-					button := taskButton(c, instances, position)
-					mainBox.PackStart(button, false, false, 0)
-					if c.Class == activeClient.Class && !*autohide {
-						button.SetObjectProperty("name", "active")
-					} else {
-						button.SetObjectProperty("name", "")
-					}
-				} else if !isIn(alreadyAdded, c.Class) {
-					button := taskButton(c, instances, position)
-					mainBox.PackStart(button, false, false, 0)
-					if c.Class == activeClient.Class && !*autohide {
-						button.SetObjectProperty("name", "active")
-					} else {
-						button.SetObjectProperty("name", "")
-					}
-					alreadyAdded = append(alreadyAdded, c.Class)
-					clientMenu(c.Class, instances)
-				} else {
-					continue
-				}
-			} else {
+
+			if isIn(classesToIgnore, c.Class) {
 				log.Debugf("Ignoring instance '%s'", c.Class)
+				continue
+			}
+
+			if len(instances) == 1 {
+				button := taskButton(c, instances, position)
+				mainBox.PackStart(button, false, false, 0)
+
+				if c.Class == activeClient.Class && !*autohide {
+					button.SetObjectProperty("name", "active")
+				} else {
+					button.SetObjectProperty("name", "")
+				}
+
+			} else if !isIn(alreadyAdded, c.Class) {
+				button := taskButton(c, instances, position)
+				mainBox.PackStart(button, false, false, 0)
+
+				if c.Class == activeClient.Class && !*autohide {
+					button.SetObjectProperty("name", "active")
+				} else {
+					button.SetObjectProperty("name", "")
+				}
+
+				alreadyAdded = append(alreadyAdded, c.Class)
+				clientMenu(c.Class, instances)
 			}
 		}
 	}
@@ -268,22 +272,22 @@ func setupHotSpot(monitor gdk.Monitor, dockWindow *gtk.Window) gtk.Window {
 
 	// Toggle dock on click only
 	detectorBox.Connect("button-press-event", func() {
-		if locked { 
-			return 
+		if locked {
+			return
 		}
-		
+
 		locked = true
 
-		if !dockWindow.IsVisible() { 
-			dockWindow.Show() 
-		} else { 
-			dockWindow.Hide() 
+		if !dockWindow.IsVisible() {
+			dockWindow.Show()
+		} else {
+			dockWindow.Hide()
 		}
-		
+
 		go func() {
 			time.Sleep(cooldown)
-			glib.IdleAdd(func() { 
-				locked = false 
+			glib.IdleAdd(func() {
+				locked = false
 			})
 		}()
 	})
@@ -626,7 +630,6 @@ func main() {
 		gtklayershell.SetLayer(win, gtklayershell.LayerShellLayerBottom)
 	} else {
 		gtklayershell.SetLayer(win, gtklayershell.LayerShellLayerOverlay)
-		gtklayershell.SetExclusiveZone(win, -1)
 	}
 
 	gtklayershell.SetMargin(win, gtklayershell.LayerShellEdgeTop, *marginTop)
@@ -641,7 +644,7 @@ func main() {
 	// Close the window on leave, but not immediately, to avoid accidental closes
 	if *autohide {
 		win.Connect("leave-notify-event", func() {
-			src = glib.TimeoutAdd(uint(1000), func() bool {
+			src = glib.TimeoutAdd(1000, func() bool {
 				mouseInsideDock = false
 				win.Hide()
 				src = 0
@@ -664,17 +667,6 @@ func main() {
 
 	mainBox = gtk.NewBox(innerOrientation, 0)
 	// We'll pack mainBox later, in buildMainBox
-
-	oldClients = clients
-	refreshMainBox := func() {
-		if len(clients) != len(oldClients) {
-			glib.TimeoutAdd(0, func() bool {
-				buildMainBox()
-				oldClients = clients
-				return false
-			})
-		}
-	}
 
 	err = listClients()
 	if err != nil {
@@ -748,6 +740,17 @@ func main() {
 	addr := &net.UnixAddr{
 		Name: fmt.Sprintf("%s/%s/.socket2.sock", hyprDir, his),
 		Net:  "unix",
+	}
+
+	oldClients = clients
+	refreshMainBox := func() {
+		if len(clients) != len(oldClients) {
+			glib.TimeoutAdd(0, func() bool {
+				buildMainBox()
+				oldClients = clients
+				return false
+			})
+		}
 	}
 
 	go func() {

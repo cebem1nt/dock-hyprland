@@ -58,33 +58,31 @@ func pinnedButton(ID string, position *string) *gtk.Box {
 		launch(ID)
 	})
 
-	button.Connect("button-release-event", func(btn *gtk.Button, e *gdk.Event) bool {
+	button.Connect("button-release-event", func(btn *gtk.Button, e *gdk.Event) {
 		btnEvent := e.AsButton()
 		if btnEvent.Button() == 1 || btnEvent.Button() == 2 {
 			launch(ID)
-			return true
 		} else if btnEvent.Button() == 3 {
 			contextMenu := pinnedMenuContext(ID)
+
+			contextMenu.Connect("hide", func() {
+				button.UnsetStateFlags(gtk.StateFlagPrelight)
+			})
 
 			if *autohide {
 				contextMenu.Connect("hide", func() {
 					mouseInsideDock = false
 
-					glib.TimeoutAdd(2000, func() bool {
-
+					glib.TimeoutAdd(2000, func() {
 						if !mouseInsideDock {
 							win.Hide()
 						}
-
-						return false
 					})
 				})
 			}
 
 			contextMenu.PopupAtWidget(button, widgetAnchor, menuAnchor, nil)
-			return true
 		}
-		return false
 	})
 
 	button.Connect("enter-notify-event", cancelClose)
@@ -227,6 +225,7 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 		button.SetImagePosition(gtk.PosTop)
 		button.SetAlwaysShowImage(true)
 	}
+
 	button.SetTooltipText(getName(t.Class))
 
 	var img *gtk.Image
@@ -257,9 +256,11 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 				imgSizeScaled/8, imgSizeScaled)
 		}
 	}
+
 	if err == nil {
 		img = gtk.NewImageFromPixbuf(pixbuf)
 	}
+
 	if img != nil {
 		if *position == "left" || *position == "top" {
 			box.PackStart(img, false, false, 0)
@@ -270,88 +271,60 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 		}
 
 	}
+
 	button.Connect("enter-notify-event", cancelClose)
 
-	if len(instances) == 1 {
-		button.Connect("event", func(btn *gtk.Button, e *gdk.Event) bool {
-			btnEvent := e.AsButton()
-			if btnEvent.Type() == gdk.ButtonReleaseType || btnEvent.Type() == gdk.TouchEndType {
-				if btnEvent.Button() == 1 || btnEvent.Type() == gdk.TouchEndType {
-					cmd := fmt.Sprintf("dispatch focuswindow address:%s", t.Address)
-					if strings.HasPrefix(t.Workspace.Name, "special") {
-						_, specialName, _ := strings.Cut(t.Workspace.Name, "special:")
-						cmd = fmt.Sprintf("dispatch togglespecialworkspace %s", specialName)
-					}
-					reply, _ := hyprctl(cmd)
-					log.Debugf("%s -> %s", cmd, reply)
+	button.Connect("button-release-event", func(btn *gtk.Button, e *gdk.Event) {
+		btnEvent := e.AsButton()
 
-					// fix #14
-					cmd = "dispatch bringactivetotop"
-					reply, _ = hyprctl(cmd)
-					log.Debugf("%s -> %s", cmd, reply)
+		if btnEvent.Button() == 1 {
+			if len(instances) == 1 {
+				cmd := fmt.Sprintf("dispatch focuswindow address:%s", t.Address)
 
-					return true
-				} else if btnEvent.Button() == 2 {
-					launch(t.Class)
-					return true
-				} else if btnEvent.Button() == 3 {
-					contextMenu := clientMenuContext(t.Class, instances)
-
-					if *autohide {
-						contextMenu.Connect("hide", func() {
-							mouseInsideDock = false
-
-							glib.TimeoutAdd(2000, func() bool {
-
-								if !mouseInsideDock {
-									win.Hide()
-								}
-
-								return false
-							})
-						})
-					}
-
-					contextMenu.PopupAtWidget(button, widgetAnchor, menuAnchor, nil)
-					return true
+				if strings.HasPrefix(t.Workspace.Name, "special") {
+					_, specialName, _ := strings.Cut(t.Workspace.Name, "special:")
+					cmd = fmt.Sprintf("dispatch togglespecialworkspace %s", specialName)
 				}
-			}
-			return false
-		})
-	} else {
-		button.Connect("button-release-event", func(btn *gtk.Button, e *gdk.Event) bool {
-			btnEvent := e.AsButton()
-			if btnEvent.Button() == 1 {
+
+				reply, _ := hyprctl(cmd)
+				log.Debugf("%s -> %s", cmd, reply)
+
+				// fix #14
+				cmd = "dispatch bringactivetotop"
+				reply, _ = hyprctl(cmd)
+				log.Debugf("%s -> %s", cmd, reply)
+			} else {
 				menu := clientMenu(t.Class, instances)
+				menu.Connect("hide", func() {
+					button.UnsetStateFlags(gtk.StateFlagPrelight)
+				})
+
 				menu.PopupAtWidget(button, widgetAnchor, menuAnchor, nil)
-				return true
-			} else if btnEvent.Button() == 2 {
-				launch(t.Class)
-				return true
-			} else if btnEvent.Button() == 3 {
-				contextMenu := clientMenuContext(t.Class, instances)
-
-				if *autohide {
-					contextMenu.Connect("hide", func() {
-						mouseInsideDock = false
-
-						glib.TimeoutAdd(2000, func() bool {
-
-							if !mouseInsideDock {
-								win.Hide()
-							}
-
-							return false
-						})
-					})
-				}
-
-				contextMenu.PopupAtWidget(button, widgetAnchor, menuAnchor, nil)
-				return true
 			}
-			return false
-		})
-	}
+		} else if btnEvent.Button() == 2 {
+			launch(t.Class)
+
+		} else if btnEvent.Button() == 3 {
+			contextMenu := clientMenuContext(t.Class, instances)
+			contextMenu.Connect("hide", func() {
+				button.UnsetStateFlags(gtk.StateFlagPrelight)
+			})
+
+			if *autohide {
+				contextMenu.Connect("hide", func() {
+					mouseInsideDock = false
+
+					glib.TimeoutAdd(2000, func() {
+						if !mouseInsideDock {
+							win.Hide()
+						}
+					})
+				})
+			}
+
+			contextMenu.PopupAtWidget(button, widgetAnchor, menuAnchor, nil)
+		}
+	})
 
 	return box
 }
