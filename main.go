@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/allan-simon/go-singleinstance"
 	log "github.com/sirupsen/logrus"
@@ -34,7 +33,6 @@ type WindowState int
 const (
 	WindowShow WindowState = iota
 	WindowHide
-	cooldown = 300 * time.Millisecond
 )
 
 var (
@@ -271,25 +269,27 @@ func setupHotSpot(monitor gdk.Monitor, dockWindow *gtk.Window) gtk.Window {
 	}
 
 	// Toggle dock on click only
-	detectorBox.Connect("button-press-event", func() {
-		if locked {
-			return
+	detectorBox.Connect("button-press-event", func(_ *gtk.EventBox, e *gdk.Event) {
+		btnEvent := e.AsButton()
+		if btnEvent.Button() == 1 {
+			if locked {
+				return
+			}
+
+			locked = true
+
+			if !dockWindow.IsVisible() {
+				dockWindow.Show()
+			} else {
+				dockWindow.Hide()
+			}
+
+			go func() {
+				glib.TimeoutAdd(300, func() {
+					locked = false
+				})
+			}()
 		}
-
-		locked = true
-
-		if !dockWindow.IsVisible() {
-			dockWindow.Show()
-		} else {
-			dockWindow.Hide()
-		}
-
-		go func() {
-			time.Sleep(cooldown)
-			glib.IdleAdd(func() {
-				locked = false
-			})
-		}()
 	})
 
 	if *position == "bottom" || *position == "top" {
@@ -324,21 +324,6 @@ func setupHotSpot(monitor gdk.Monitor, dockWindow *gtk.Window) gtk.Window {
 		gtklayershell.SetLayer(win, gtklayershell.LayerShellLayerBottom)
 	} else {
 		gtklayershell.SetLayer(win, gtklayershell.LayerShellLayerOverlay)
-	}
-
-	if *autohide {
-		win.Connect("leave-notify-event", func() {
-			mouseInsideHotspot = false
-			glib.TimeoutAdd(1000, func() bool {
-				if !mouseInsideDock && !mouseInsideHotspot {
-					dockWindow.Hide()
-				}
-				return false
-			})
-		})
-		win.Connect("enter-notify-event", func() {
-			mouseInsideHotspot = true
-		})
 	}
 
 	gtklayershell.SetExclusiveZone(win, -1)
@@ -677,7 +662,7 @@ func main() {
 	win.ShowAll()
 
 	if *autohide {
-		glib.TimeoutAdd(uint(500), win.Hide)
+		glib.TimeoutAdd(500, win.Hide)
 
 		mRefProvider := gtk.NewCSSProvider()
 		css := "window { all: unset; }"
