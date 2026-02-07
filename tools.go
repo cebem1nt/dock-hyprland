@@ -5,16 +5,17 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/diamondburned/gotk4/pkg/gdk/v3"
-	"github.com/diamondburned/gotk4/pkg/gdkpixbuf/v2"
-	"github.com/diamondburned/gotk4/pkg/glib/v2"
-	"github.com/diamondburned/gotk4/pkg/gtk/v3"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/diamondburned/gotk4/pkg/gdk/v3"
+	"github.com/diamondburned/gotk4/pkg/gdkpixbuf/v2"
+	"github.com/diamondburned/gotk4/pkg/glib/v2"
+	"github.com/diamondburned/gotk4/pkg/gtk/v3"
+	log "github.com/sirupsen/logrus"
 )
 
 func taskInstances(ID string) []client {
@@ -53,21 +54,32 @@ func pinnedButton(ID string, position *string) *gtk.Box {
 	button.SetAlwaysShowImage(true)
 	button.SetTooltipText(getName(ID))
 
-	button.Connect("clicked", func() {
-		launch(ID)
-	})
-
-	button.Connect("button-release-event", func(btn *gtk.Button, e *gdk.Event) bool {
+	button.Connect("button-release-event", func(btn *gtk.Button, e *gdk.Event) {
 		btnEvent := e.AsButton()
+
 		if btnEvent.Button() == 1 || btnEvent.Button() == 2 {
 			launch(ID)
-			return true
 		} else if btnEvent.Button() == 3 {
 			contextMenu := pinnedMenuContext(ID)
+
+			contextMenu.Connect("hide", func() {
+				btn.UnsetStateFlags(gtk.StateFlagPrelight)
+			})
+
+			if *autohide {
+				contextMenu.Connect("hide", func() {
+					mouseInsideDock = false
+
+					glib.TimeoutAdd(1500, func() {
+						if !mouseInsideDock {
+							win.Hide()
+						}
+					})
+				})
+			}
+
 			contextMenu.PopupAtWidget(button, widgetAnchor, menuAnchor, nil)
-			return true
 		}
-		return false
 	})
 
 	button.Connect("enter-notify-event", cancelClose)
@@ -210,6 +222,7 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 		button.SetImagePosition(gtk.PosTop)
 		button.SetAlwaysShowImage(true)
 	}
+
 	button.SetTooltipText(getName(t.Class))
 
 	var img *gtk.Image
@@ -240,9 +253,11 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 				imgSizeScaled/8, imgSizeScaled)
 		}
 	}
+
 	if err == nil {
 		img = gtk.NewImageFromPixbuf(pixbuf)
 	}
+
 	if img != nil {
 		if *position == "left" || *position == "top" {
 			box.PackStart(img, false, false, 0)
@@ -253,56 +268,62 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 		}
 
 	}
+
 	button.Connect("enter-notify-event", cancelClose)
+	button.Connect("button-release-event", func(btn *gtk.Button, e *gdk.Event) {
+		btnEvent := e.AsButton()
 
-	if len(instances) == 1 {
-		button.Connect("event", func(btn *gtk.Button, e *gdk.Event) bool {
-			btnEvent := e.AsButton()
-			if btnEvent.Type() == gdk.ButtonReleaseType || btnEvent.Type() == gdk.TouchEndType {
-				if btnEvent.Button() == 1 || btnEvent.Type() == gdk.TouchEndType {
-					cmd := fmt.Sprintf("dispatch focuswindow address:%s", t.Address)
-					if strings.HasPrefix(t.Workspace.Name, "special") {
-						_, specialName, _ := strings.Cut(t.Workspace.Name, "special:")
-						cmd = fmt.Sprintf("dispatch togglespecialworkspace %s", specialName)
-					}
-					reply, _ := hyprctl(cmd)
-					log.Debugf("%s -> %s", cmd, reply)
+		if btnEvent.Button() == 1 {
+			if len(instances) == 1 {
+				cmd := fmt.Sprintf("dispatch focuswindow address:%s", t.Address)
 
-					// fix #14
-					cmd = "dispatch bringactivetotop"
-					reply, _ = hyprctl(cmd)
-					log.Debugf("%s -> %s", cmd, reply)
-
-					return true
-				} else if btnEvent.Button() == 2 {
-					launch(t.Class)
-					return true
-				} else if btnEvent.Button() == 3 {
-					contextMenu := clientMenuContext(t.Class, instances)
-					contextMenu.PopupAtWidget(button, widgetAnchor, menuAnchor, nil)
-					return true
+				if strings.HasPrefix(t.Workspace.Name, "special") {
+					_, specialName, _ := strings.Cut(t.Workspace.Name, "special:")
+					cmd = fmt.Sprintf("dispatch togglespecialworkspace %s", specialName)
 				}
-			}
-			return false
-		})
-	} else {
-		button.Connect("button-release-event", func(btn *gtk.Button, e *gdk.Event) bool {
-			btnEvent := e.AsButton()
-			if btnEvent.Button() == 1 {
+
+				reply, _ := hyprctl(cmd)
+				log.Debugf("%s -> %s", cmd, reply)
+
+				// fix #14
+				cmd = "dispatch bringactivetotop"
+				reply, _ = hyprctl(cmd)
+				log.Debugf("%s -> %s", cmd, reply)
+			} else {
 				menu := clientMenu(t.Class, instances)
-				menu.PopupAtWidget(button, widgetAnchor, menuAnchor, nil)
-				return true
-			} else if btnEvent.Button() == 2 {
-				launch(t.Class)
-				return true
-			} else if btnEvent.Button() == 3 {
-				contextMenu := clientMenuContext(t.Class, instances)
-				contextMenu.PopupAtWidget(button, widgetAnchor, menuAnchor, nil)
-				return true
+				menu.Connect("hide", func() {
+					btn.UnsetStateFlags(gtk.StateFlagPrelight)
+				})
+
+				menu.PopupAtWidget(btn, widgetAnchor, menuAnchor, nil)
 			}
-			return false
-		})
-	}
+		} else if btnEvent.Button() == 2 {
+			launch(t.Class)
+			glib.TimeoutAdd(50, func() bool {
+				btn.UnsetStateFlags(gtk.StateFlagPrelight)
+				return false
+			})
+		} else if btnEvent.Button() == 3 {
+			contextMenu := clientMenuContext(t.Class, instances)
+			contextMenu.Connect("hide", func() {
+				btn.UnsetStateFlags(gtk.StateFlagPrelight)
+			})
+
+			if *autohide {
+				contextMenu.Connect("hide", func() {
+					mouseInsideDock = false
+
+					glib.TimeoutAdd(1500, func() {
+						if !mouseInsideDock {
+							win.Hide()
+						}
+					})
+				})
+			}
+
+			contextMenu.PopupAtWidget(button, widgetAnchor, menuAnchor, nil)
+		}
+	})
 
 	return box
 }
@@ -349,6 +370,58 @@ func clientMenu(class string, instances []client) gtk.Menu {
 	return *menu
 }
 
+func contextMenuActions(instance client, submenu *gtk.Menu) {
+	a := instance.Address
+
+	subitem := gtk.NewMenuItemWithLabel("Close window")
+	submenu.Append(subitem)
+	subitem.Connect("activate", func() {
+		cmd := fmt.Sprintf("dispatch closewindow address:%s", a)
+		reply, _ := hyprctl(cmd)
+		log.Debugf("%s -> %s", cmd, reply)
+	})
+
+	subitem = gtk.NewMenuItemWithLabel("Toggle floating")
+	submenu.Append(subitem)
+	subitem.Connect("activate", func() {
+		cmd := fmt.Sprintf("dispatch focuswindow address:%s", a)
+		reply, _ := hyprctl(cmd)
+
+		cmd = fmt.Sprintf("dispatch togglefloating address:%s", a)
+		reply, _ = hyprctl(cmd)
+		log.Debugf("%s -> %s", cmd, reply)
+	})
+
+	subitem = gtk.NewMenuItemWithLabel("Fullscreen")
+	submenu.Append(subitem)
+	subitem.Connect("activate", func() {
+		cmd := fmt.Sprintf("dispatch focuswindow address:%s", a)
+		reply, _ := hyprctl(cmd)
+
+		cmd = fmt.Sprintf("dispatch fullscreen address:%s", a)
+		reply, _ = hyprctl(cmd)
+		log.Debugf("%s -> %s", cmd, reply)
+	})
+
+	subitem = gtk.NewMenuItemWithLabel("Move to workspace")
+	workspaceSubmenu := gtk.NewMenu()
+
+	for i := 1; i < int(*numWS)+1; i++ {
+		workspace := gtk.NewMenuItemWithLabel(fmt.Sprintf("%v", i))
+
+		workspace.Connect("activate", func() {
+			cmd := fmt.Sprintf("dispatch movetoworkspace %v,address:%v", i, a)
+			reply, _ := hyprctl(cmd)
+			log.Debugf("%s -> %s", cmd, reply)
+		})
+
+		workspaceSubmenu.Append(workspace)
+	}
+
+	subitem.SetSubmenu(workspaceSubmenu)
+	submenu.Append(subitem)
+}
+
 func clientMenuContext(class string, instances []client) gtk.Menu {
 	menu := gtk.NewMenu()
 
@@ -356,90 +429,6 @@ func clientMenuContext(class string, instances []client) gtk.Menu {
 	if err != nil {
 		log.Warnf("%s %s", err, class)
 	}
-	for _, instance := range instances {
-		menuItem := gtk.NewMenuItem()
-		hbox := gtk.NewBox(gtk.OrientationHorizontal, 6)
-		image := gtk.NewImageFromIconName(iconName, int(gtk.IconSizeMenu))
-		hbox.PackStart(image, false, false, 0)
-		title := instance.Title
-		if len(title) > 25 {
-			title = title[:25]
-		}
-		// Clean non-ASCII chars
-		//title = strings.Map(func(r rune) rune {
-		//	if r > unicode.MaxASCII {
-		//		return -1
-		//	}
-		//	return r
-		//}, title)
-		label := gtk.NewLabel(fmt.Sprintf("%s (%v)", title, instance.Workspace.Name))
-		hbox.PackStart(label, false, false, 0)
-		menuItem.Add(hbox)
-		menu.Append(menuItem)
-		submenu := gtk.NewMenu()
-
-		a := instance.Address
-
-		subitem := gtk.NewMenuItemWithLabel("closewindow")
-		submenu.Append(subitem)
-		subitem.Connect("activate", func() {
-			cmd := fmt.Sprintf("dispatch closewindow address:%s", a)
-			reply, _ := hyprctl(cmd)
-			log.Debugf("%s -> %s", cmd, reply)
-		})
-
-		subitem = gtk.NewMenuItemWithLabel("togglefloating")
-		submenu.Append(subitem)
-		subitem.Connect("activate", func() {
-			cmd := fmt.Sprintf("dispatch togglefloating address:%s", a)
-			reply, _ := hyprctl(cmd)
-			log.Debugf("%s -> %s", cmd, reply)
-		})
-
-		subitem = gtk.NewMenuItemWithLabel("fullscreen")
-		submenu.Append(subitem)
-		subitem.Connect("activate", func() {
-			cmd := fmt.Sprintf("dispatch fullscreen address:%s", a)
-			reply, _ := hyprctl(cmd)
-			log.Debugf("%s -> %s", cmd, reply)
-		})
-
-		s := gtk.NewSeparatorMenuItem()
-		submenu.Append(&s.MenuItem)
-
-		for i := 1; i < int(*numWS)+1; i++ {
-			subItem := gtk.NewMenuItemWithLabel(fmt.Sprintf("-> WS %v", i))
-			target := i
-			subItem.Connect("activate", func() {
-				cmd := fmt.Sprintf("dispatch movetoworkspace %v,address:%v", target, a)
-				reply, _ := hyprctl(cmd)
-				log.Debugf("%s -> %s", cmd, reply)
-			})
-			submenu.Append(subItem)
-		}
-
-		menuItem.SetSubmenu(submenu)
-	}
-	separator := gtk.NewSeparatorMenuItem()
-	menu.Append(&separator.MenuItem)
-
-	item := gtk.NewMenuItemWithLabel("New window")
-	item.Connect("activate", func() {
-		launch(class)
-	})
-	menu.Append(item)
-
-	closeAllWindows := gtk.NewMenuItem()
-	closeAllWindows.SetLabel("Close all windows")
-	closeAllWindows.Connect("activate", func() {
-		for _, instance := range instances {
-			address := instance.Address
-			cmd := fmt.Sprintf("dispatch closewindow address:%s", address)
-			reply, _ := hyprctl(cmd)
-			log.Infof("%s -> %s", cmd, reply)
-		}
-	})
-	menu.Append(closeAllWindows)
 
 	pinItem := gtk.NewMenuItem()
 	if !inPinned(class) {
@@ -456,6 +445,53 @@ func clientMenuContext(class string, instances []client) gtk.Menu {
 		})
 	}
 	menu.Append(pinItem)
+
+	item := gtk.NewMenuItemWithLabel("New window")
+	item.Connect("activate", func() {
+		launch(class)
+	})
+	menu.Append(item)
+
+	if len(instances) > 1 {
+		closeAllWindows := gtk.NewMenuItem()
+		closeAllWindows.SetLabel("Close all windows")
+
+		closeAllWindows.Connect("activate", func() {
+			for _, instance := range instances {
+				address := instance.Address
+				cmd := fmt.Sprintf("dispatch closewindow address:%s", address)
+				reply, _ := hyprctl(cmd)
+				log.Infof("%s -> %s", cmd, reply)
+			}
+		})
+
+		menu.Append(closeAllWindows)
+	}
+
+	if len(instances) == 1 {
+		contextMenuActions(instances[0], menu)
+	} else {
+		for _, instance := range instances {
+			menuItem := gtk.NewMenuItem()
+			hbox := gtk.NewBox(gtk.OrientationHorizontal, 6)
+			image := gtk.NewImageFromIconName(iconName, int(gtk.IconSizeMenu))
+			hbox.PackStart(image, false, false, 0)
+			title := instance.Title
+
+			if len(title) > 25 {
+				title = title[:25]
+			}
+
+			contextSubMenu := gtk.NewMenu()
+			contextMenuActions(instance, contextSubMenu)
+
+			label := gtk.NewLabel(fmt.Sprintf("%s (%v)", title, instance.Workspace.Name))
+			hbox.PackStart(label, false, false, 0)
+			menuItem.Add(hbox)
+			menuItem.SetSubmenu(contextSubMenu)
+			menu.Append(menuItem)
+		}
+	}
 
 	menu.ShowAll()
 	return *menu
@@ -947,18 +983,9 @@ func launch(ID string) {
 		}
 	}
 
-	cmd := exec.Command(elements[cmdIdx], elements[1+cmdIdx:]...)
+	cmd := fmt.Sprintf("dispatch exec %s", command)
 
-	// set env variables
-	if len(envVars) > 0 {
-		cmd.Env = os.Environ()
-		cmd.Env = append(cmd.Env, envVars...)
-	}
-
-	msg := fmt.Sprintf("env vars: %s; command: '%s'; args: %s\n", envVars, elements[cmdIdx], args)
-	log.Info(msg)
-
-	if err := cmd.Start(); err != nil {
+	if _, err := hyprctl(cmd); err != nil {
 		log.Error("Unable to launch command!", err.Error())
 	}
 

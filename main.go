@@ -13,11 +13,9 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/allan-simon/go-singleinstance"
 	log "github.com/sirupsen/logrus"
@@ -62,6 +60,7 @@ var (
 	classesToIgnore                    []string
 	mouseInsideDock                    bool
 	mouseInsideHotspot                 bool
+	locked                             bool
 )
 
 // Flags
@@ -99,6 +98,7 @@ func buildMainBox() {
 	if mainBox != nil {
 		mainBox.Destroy()
 	}
+
 	mainBox = gtk.NewBox(innerOrientation, 0)
 
 	if *alignment == "start" {
@@ -121,15 +121,6 @@ func buildMainBox() {
 			allItems = append(allItems, cntPin)
 		}
 	}
-
-	// actually unnecessary in recent Hyprland versions, but just in case, see #44.
-	sort.Slice(clients, func(i, j int) bool {
-		if clients[i].Workspace.Id != clients[j].Workspace.Id {
-			return clients[i].Workspace.Id < clients[j].Workspace.Id
-		} else {
-			return clients[i].Class < clients[j].Class
-		}
-	})
 
 	// delete the clients that are on ignored workspaces
 	clients = slices.DeleteFunc(clients, func(cl client) bool {
@@ -176,30 +167,34 @@ func buildMainBox() {
 		} else {
 			instances := taskInstances(pin)
 			c := instances[0]
-			if !isIn(classesToIgnore, c.Class) {
-				if len(instances) == 1 {
-					button := taskButton(c, instances, position)
-					mainBox.PackStart(button, false, false, 0)
-					if c.Class == activeClient.Class && !*autohide {
-						button.SetObjectProperty("name", "active")
-					} else {
-						button.SetObjectProperty("name", "")
-					}
-				} else if !isIn(alreadyAdded, c.Class) {
-					button := taskButton(c, instances, position)
-					mainBox.PackStart(button, false, false, 0)
-					if c.Class == activeClient.Class && !*autohide {
-						button.SetObjectProperty("name", "active")
-					} else {
-						button.SetObjectProperty("name", "")
-					}
-					alreadyAdded = append(alreadyAdded, c.Class)
-					clientMenu(c.Class, instances)
-				} else {
-					continue
-				}
-			} else {
+
+			if isIn(classesToIgnore, c.Class) {
 				log.Debugf("Ignoring instance '%s'", c.Class)
+				continue
+			}
+
+			if len(instances) == 1 {
+				button := taskButton(c, instances, position)
+				mainBox.PackStart(button, false, false, 0)
+
+				if c.Class == activeClient.Class && !*autohide {
+					button.SetObjectProperty("name", "active")
+				} else {
+					button.SetObjectProperty("name", "")
+				}
+
+			} else if !isIn(alreadyAdded, c.Class) {
+				button := taskButton(c, instances, position)
+				mainBox.PackStart(button, false, false, 0)
+
+				if c.Class == activeClient.Class && !*autohide {
+					button.SetObjectProperty("name", "active")
+				} else {
+					button.SetObjectProperty("name", "")
+				}
+
+				alreadyAdded = append(alreadyAdded, c.Class)
+				clientMenu(c.Class, instances)
 			}
 		}
 	}
@@ -273,35 +268,33 @@ func setupHotSpot(monitor gdk.Monitor, dockWindow *gtk.Window) gtk.Window {
 		box.PackEnd(detectorBox, false, false, 0)
 	}
 
-	detectorBox.Connect("enter-notify-event", func() {
-		detectorEnteredAt = time.Now().UnixNano() / 1000000
-	})
+	// Toggle dock on click only
+	detectorBox.Connect("button-press-event", func(_ *gtk.EventBox, e *gdk.Event) {
+		btnEvent := e.AsButton()
+		if btnEvent.Button() == 1 {
+			if locked {
+				return
+			}
 
-	hotspotBox := gtk.NewEventBox()
-	hotspotBox.SetObjectProperty("name", "hotspot-box")
+			locked = true
 
-	if *position == "bottom" {
-		box.PackStart(hotspotBox, false, false, 0)
-	} else {
-		box.PackEnd(hotspotBox, false, false, 0)
-	}
+			if !dockWindow.IsVisible() {
+				dockWindow.Show()
+			} else {
+				dockWindow.Hide()
+			}
 
-	hotspotBox.Connect("enter-notify-event", func() {
-		hotspotEnteredAt := time.Now().UnixNano() / 1000000
-		delay := hotspotEnteredAt - detectorEnteredAt
-		gtklayershell.SetMonitor(dockWindow, &monitor)
-		if delay <= *hotspotDelay || *hotspotDelay == 0 {
-			log.Debugf("Delay %v < %v ms, let's show the window!", delay, *hotspotDelay)
-			dockWindow.Hide()
-			dockWindow.Show()
-		} else {
-			log.Debugf("Delay %v > %v ms, don't show the window :/", delay, *hotspotDelay)
+			go func() {
+				glib.TimeoutAdd(300, func() {
+					locked = false
+				})
+			}()
 		}
 	})
 
 	if *position == "bottom" || *position == "top" {
 		detectorBox.SetSizeRequest(w, h/3)
-		hotspotBox.SetSizeRequest(w, 2)
+
 		if *position == "bottom" {
 			gtklayershell.SetAnchor(win, gtklayershell.LayerShellEdgeBottom, true)
 		} else {
@@ -314,7 +307,7 @@ func setupHotSpot(monitor gdk.Monitor, dockWindow *gtk.Window) gtk.Window {
 
 	if *position == "left" || *position == "right" {
 		detectorBox.SetSizeRequest(w/3, h)
-		hotspotBox.SetSizeRequest(2, h)
+
 		if *position == "left" {
 			gtklayershell.SetAnchor(win, gtklayershell.LayerShellEdgeLeft, true)
 		} else {
@@ -332,27 +325,6 @@ func setupHotSpot(monitor gdk.Monitor, dockWindow *gtk.Window) gtk.Window {
 	} else {
 		gtklayershell.SetLayer(win, gtklayershell.LayerShellLayerOverlay)
 	}
-
-	if *autohide {
-		win.Connect("leave-notify-event", func() {
-			mouseInsideHotspot = false
-			glib.TimeoutAdd(1000, func() bool {
-				if !mouseInsideDock && !mouseInsideHotspot {
-					dockWindow.Hide()
-				}
-				return false
-			})
-		})
-		win.Connect("enter-notify-event", func() {
-			mouseInsideHotspot = true
-		})
-	}
-
-	// resolve #65
-	// gtklayershell.SetMargin(win, gtklayershell.LayerShellEdgeTop, *marginTop)
-	// gtklayershell.SetMargin(win, gtklayershell.LayerShellEdgeLeft, *marginLeft)
-	// gtklayershell.SetMargin(win, gtklayershell.LayerShellEdgeRight, *marginRight)
-	// gtklayershell.SetMargin(win, gtklayershell.LayerShellEdgeBottom, *marginBottom)
 
 	gtklayershell.SetExclusiveZone(win, -1)
 
@@ -643,7 +615,6 @@ func main() {
 		gtklayershell.SetLayer(win, gtklayershell.LayerShellLayerBottom)
 	} else {
 		gtklayershell.SetLayer(win, gtklayershell.LayerShellLayerOverlay)
-		gtklayershell.SetExclusiveZone(win, -1)
 	}
 
 	gtklayershell.SetMargin(win, gtklayershell.LayerShellEdgeTop, *marginTop)
@@ -656,16 +627,16 @@ func main() {
 	})
 
 	// Close the window on leave, but not immediately, to avoid accidental closes
-	win.Connect("leave-notify-event", func() {
-		if *autohide {
-			src = glib.TimeoutAdd(uint(1000), func() bool {
+	if *autohide {
+		win.Connect("leave-notify-event", func() {
+			src = glib.TimeoutAdd(1000, func() bool {
 				mouseInsideDock = false
 				win.Hide()
 				src = 0
 				return false
 			})
-		}
-	})
+		})
+	}
 
 	win.Connect("enter-notify-event", func() {
 		mouseInsideDock = true
@@ -682,27 +653,16 @@ func main() {
 	mainBox = gtk.NewBox(innerOrientation, 0)
 	// We'll pack mainBox later, in buildMainBox
 
-	oldClients = clients
-	refreshMainBox := func(forceRefresh bool) {
-		if forceRefresh || (len(clients) != len(oldClients)) {
-			glib.TimeoutAdd(0, func() bool {
-				buildMainBox()
-				oldClients = clients
-				return false
-			})
-		}
-	}
-
 	err = listClients()
 	if err != nil {
 		log.Fatalf("Couldn't list clients: %s", err)
 	}
-	buildMainBox()
 
+	buildMainBox()
 	win.ShowAll()
 
 	if *autohide {
-		glib.TimeoutAdd(uint(500), win.Hide)
+		glib.TimeoutAdd(500, win.Hide)
 
 		mRefProvider := gtk.NewCSSProvider()
 		css := "window { all: unset; }"
@@ -767,6 +727,17 @@ func main() {
 		Net:  "unix",
 	}
 
+	oldClients = clients
+	refreshMainBox := func() {
+		if len(clients) != len(oldClients) {
+			glib.TimeoutAdd(0, func() bool {
+				buildMainBox()
+				oldClients = clients
+				return false
+			})
+		}
+	}
+
 	go func() {
 		conn, err := net.DialUnix("unix", nil, addr)
 		if err != nil {
@@ -783,14 +754,14 @@ func main() {
 			}
 
 			s := string(buf[:n])
-			if strings.Contains(s, "activewindowv2") {
-				winAddr := strings.TrimSpace(strings.Split(s, "activewindowv2>>")[1])
-				if winAddr != lastWinAddr && !strings.Contains(winAddr, ">>") {
+			if strings.Contains(s, "openwindow") || strings.Contains(s, "closewindow") {
+				winAddr := strings.TrimSpace(strings.Split(s, ">>")[1])
+				if winAddr != lastWinAddr {
 					err = listClients()
 					if err != nil {
 						log.Fatalf("Couldn't list clients: %s", err)
 					} else {
-						refreshMainBox(true)
+						refreshMainBox()
 					}
 					lastWinAddr = winAddr
 				}
