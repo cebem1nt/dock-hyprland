@@ -275,7 +275,9 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 
 		if btnEvent.Button() == 1 {
 			if len(instances) == 1 {
-				focusClient(t)
+				cmd := fmt.Sprintf("dispatch hl.dsp.focus({ window = 'address:%s' })", t.Address)
+				reply, _ := hyprctl(cmd)
+				log.Debugf("%s -> %s", cmd, reply)
 			} else {
 				menu := clientMenu(t.Class, instances)
 				menu.Connect("hide", func() {
@@ -336,9 +338,11 @@ func clientMenu(class string, instances []client) gtk.Menu {
 		hbox.PackStart(label, false, false, 0)
 		menuItem.Add(hbox)
 		menu.Append(menuItem)
-		instance := instance
+
 		menuItem.Connect("activate", func() {
-			focusClient(instance)
+			cmd := fmt.Sprintf("dispatch hl.dsp.focus({ window = 'address:%s' })", instance.Address)
+			reply, _ := hyprctl(cmd)
+			log.Debugf("%s -> %s", cmd, reply)
 		})
 
 	}

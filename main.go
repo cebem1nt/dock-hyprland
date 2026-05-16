@@ -200,6 +200,7 @@ func buildMainBox() {
 	}
 
 	alreadyAdded = nil
+
 	for _, t := range clients {
 		// For some time after killing a client, it's still being returned by 'j/clients', however w/o the Class value.
 		// Let's filter the ghosts out.
