@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type workspace struct {
@@ -119,4 +121,35 @@ func getActiveWindow() (*client, error) {
 		return &activeWindow, nil
 	}
 	return nil, err
+}
+
+func focusWindow(window client) {
+	cmd := fmt.Sprintf("dispatch hl.dsp.focus({ window = 'address:%s' })", window.Address)
+	reply, _ := hyprctl(cmd)
+	log.Debugf("%s -> %s", cmd, reply)
+}
+
+func closeWindow(window client) {
+	cmd := fmt.Sprintf("dispatch hl.dsp.window.close({ window = 'address:%s' })", window.Address)
+	reply, _ := hyprctl(cmd)
+	log.Debugf("%s -> %s", cmd, reply)
+}
+
+func floatWindow(window client) {
+	cmd := fmt.Sprintf("dispatch hl.dsp.window.float({ window = 'address:%s', action = 'toggle' })", window.Address)
+	reply, _ := hyprctl(cmd)
+	log.Debugf("%s -> %s", cmd, reply)
+}
+
+func fullscreenWindow(window client) {
+	cmd := fmt.Sprintf("dispatch hl.dsp.window.fullscreen({ window = 'address:%s', action = 'toggle' })", window.Address)
+	reply, _ := hyprctl(cmd)
+
+	log.Debugf("%s -> %s", cmd, reply)
+}
+
+func moveWindowToWorkspace(window client, workspace int) {
+	cmd := fmt.Sprintf("dispatch hl.dsp.window.move({ workspace = '%v', window = 'address:%v' })", workspace, window.Address)
+	reply, _ := hyprctl(cmd)
+	log.Debugf("%s -> %s", cmd, reply)
 }

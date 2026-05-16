@@ -275,9 +275,7 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 
 		if btnEvent.Button() == 1 {
 			if len(instances) == 1 {
-				cmd := fmt.Sprintf("dispatch hl.dsp.focus({ window = 'address:%s' })", t.Address)
-				reply, _ := hyprctl(cmd)
-				log.Debugf("%s -> %s", cmd, reply)
+				focusWindow(t)
 			} else {
 				menu := clientMenu(t.Class, instances)
 				menu.Connect("hide", func() {
@@ -340,9 +338,7 @@ func clientMenu(class string, instances []client) gtk.Menu {
 		menu.Append(menuItem)
 
 		menuItem.Connect("activate", func() {
-			cmd := fmt.Sprintf("dispatch hl.dsp.focus({ window = 'address:%s' })", instance.Address)
-			reply, _ := hyprctl(cmd)
-			log.Debugf("%s -> %s", cmd, reply)
+			focusWindow(instance)
 		})
 
 	}
@@ -351,39 +347,27 @@ func clientMenu(class string, instances []client) gtk.Menu {
 }
 
 func contextMenuActions(instance client, submenu *gtk.Menu) {
-	a := instance.Address
-
 	subitem := gtk.NewMenuItemWithLabel("Close window")
 	subitem.Connect("activate", func() {
-		cmd := fmt.Sprintf("dispatch hl.dsp.window.close({ window = 'address:%s' })", a)
-		reply, _ := hyprctl(cmd)
-		log.Debugf("%s -> %s", cmd, reply)
+		closeWindow(instance)
 	})
+
 	submenu.Append(subitem)
 
 	subitem = gtk.NewMenuItemWithLabel("Toggle floating")
-	subitem.Connect("activate", func() {
-		cmd := fmt.Sprintf("dispatch hl.dsp.window.float({ window = 'address:%s', action = 'toggle' })", a)
-		reply, _ := hyprctl(cmd)
-		log.Debugf("%s -> %s", cmd, reply)
 
-		cmd = fmt.Sprintf("dispatch hl.dsp.focus({ window = 'address:%s' })", a)
-		reply, _ = hyprctl(cmd)
-		log.Debugf("%s -> %s", cmd, reply)
+	subitem.Connect("activate", func() {
+		floatWindow(instance)
+		focusWindow(instance)
 	})
+
 	submenu.Append(subitem)
 
 	subitem = gtk.NewMenuItemWithLabel("Fullscreen")
 	submenu.Append(subitem)
 	subitem.Connect("activate", func() {
-		cmd := fmt.Sprintf("dispatch hl.dsp.window.fullscreen({ window = 'address:%s', action = 'toggle' })", a)
-		reply, _ := hyprctl(cmd)
-
-		log.Debugf("%s -> %s", cmd, reply)
-
-		cmd = fmt.Sprintf("dispatch hl.dsp.focus({ window = 'address:%s' })", a)
-		reply, _ = hyprctl(cmd)
-		log.Debugf("%s -> %s", cmd, reply)
+		fullscreenWindow(instance)
+		focusWindow(instance)
 	})
 
 	subitem = gtk.NewMenuItemWithLabel("Move to workspace")
@@ -393,9 +377,7 @@ func contextMenuActions(instance client, submenu *gtk.Menu) {
 		workspace := gtk.NewMenuItemWithLabel(fmt.Sprintf("%v", i))
 
 		workspace.Connect("activate", func() {
-			cmd := fmt.Sprintf("dispatch hl.dsp.window.move({ workspace = '%v', window = 'address:%v' })", i, a)
-			reply, _ := hyprctl(cmd)
-			log.Debugf("%s -> %s", cmd, reply)
+			moveWindowToWorkspace(instance, i)
 		})
 
 		workspaceSubmenu.Append(workspace)
@@ -441,10 +423,7 @@ func clientMenuContext(class string, instances []client) gtk.Menu {
 
 		closeAllWindows.Connect("activate", func() {
 			for _, instance := range instances {
-				address := instance.Address
-				cmd := fmt.Sprintf("dispatch hl.dsp.window.close({ window = 'address:%s' })", address)
-				reply, _ := hyprctl(cmd)
-				log.Infof("%s -> %s", cmd, reply)
+				closeWindow(instance)
 			}
 		})
 
