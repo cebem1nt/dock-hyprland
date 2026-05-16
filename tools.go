@@ -347,6 +347,26 @@ func clientMenu(class string, instances []client) gtk.Menu {
 }
 
 func contextMenuActions(instance client, submenu *gtk.Menu) {
+	workspaceSubitem := gtk.NewMenuItemWithLabel("Move to workspace")
+	workspaceSubmenu := gtk.NewMenu()
+
+	for i := 1; i < int(*numWS)+1; i++ {
+		workspace := gtk.NewMenuItemWithLabel(fmt.Sprintf("%v", i))
+		workspace.Connect("activate", func() {
+			moveWindowToWorkspace(instance, i)
+		})
+
+		workspaceSubmenu.Append(workspace)
+	}
+
+	workspaceSubitem.SetSubmenu(workspaceSubmenu)
+	workspaceSubitemIsAppended := false
+
+	if *position == "top" || *position == "bottom" {
+		submenu.Append(workspaceSubitem)
+		workspaceSubitemIsAppended = true
+	}
+
 	subitem := gtk.NewMenuItemWithLabel("Close window")
 	subitem.Connect("activate", func() {
 		closeWindow(instance)
@@ -370,32 +390,15 @@ func contextMenuActions(instance client, submenu *gtk.Menu) {
 		focusWindow(instance)
 	})
 
-	subitem = gtk.NewMenuItemWithLabel("Move to workspace")
-	workspaceSubmenu := gtk.NewMenu()
-
-	for i := 1; i < int(*numWS)+1; i++ {
-		workspace := gtk.NewMenuItemWithLabel(fmt.Sprintf("%v", i))
-
-		workspace.Connect("activate", func() {
-			moveWindowToWorkspace(instance, i)
-		})
-
-		workspaceSubmenu.Append(workspace)
+	if !workspaceSubitemIsAppended {
+		submenu.Append(workspaceSubitem)
 	}
-
-	subitem.SetSubmenu(workspaceSubmenu)
-	submenu.Append(subitem)
 }
 
 func clientMenuContext(class string, instances []client) gtk.Menu {
 	menu := gtk.NewMenu()
-
-	iconName, err := getIcon(class)
-	if err != nil {
-		log.Warnf("%s %s", err, class)
-	}
-
 	pinItem := gtk.NewMenuItem()
+
 	if !inPinned(class) {
 		pinItem.SetLabel("Pin")
 		pinItem.Connect("activate", func() {
@@ -409,12 +412,14 @@ func clientMenuContext(class string, instances []client) gtk.Menu {
 			unpinTask(class)
 		})
 	}
+
 	menu.Append(pinItem)
 
 	item := gtk.NewMenuItemWithLabel("New window")
 	item.Connect("activate", func() {
 		launch(class)
 	})
+
 	menu.Append(item)
 
 	if len(instances) > 1 {
@@ -430,17 +435,21 @@ func clientMenuContext(class string, instances []client) gtk.Menu {
 		menu.Append(closeAllWindows)
 	}
 
-	if len(instances) == 1 {
-		contextMenuActions(instances[0], menu)
-	} else {
+	if len(instances) > 1 {
+		iconName, err := getIcon(class)
+		if err != nil {
+			log.Warnf("%s %s", err, class)
+		}
+
 		for _, instance := range instances {
 			menuItem := gtk.NewMenuItem()
 			hbox := gtk.NewBox(gtk.OrientationHorizontal, 6)
 			image := gtk.NewImageFromIconName(iconName, int(gtk.IconSizeMenu))
 			hbox.PackStart(image, false, false, 0)
+
 			title := instance.Title
 
-			if len(title) > 25 {
+			if len(title) > 25 { // Trim title
 				title = title[:25]
 			}
 
@@ -451,8 +460,15 @@ func clientMenuContext(class string, instances []client) gtk.Menu {
 			hbox.PackStart(label, false, false, 0)
 			menuItem.Add(hbox)
 			menuItem.SetSubmenu(contextSubMenu)
-			menu.Append(menuItem)
+
+			if *position == "top" || *position == "bottom" {
+				menu.Prepend(menuItem)
+			} else {
+				menu.Append(menuItem)
+			}
 		}
+	} else {
+		contextMenuActions(instances[0], menu)
 	}
 
 	menu.ShowAll()
