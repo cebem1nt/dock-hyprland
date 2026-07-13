@@ -156,81 +156,62 @@ func buildMainBox() {
 	}
 
 	var alreadyAdded []string
+
 	for _, pin := range pinned {
-		if !inTasks(pin) {
-			if !isIn(classesToIgnore, pin) {
-				button := pinnedButton(pin, position)
-				mainBox.PackStart(button, false, false, 0)
-			} else {
-				log.Debugf("Ignoring pin '%s'", pin)
-			}
-		} else {
+		if isIn(classesToIgnore, pin) {
+			log.Debugf("Ignoring pin '%s'", pin)
+			continue
+		}
+
+		if inTasks(pin) {
 			instances := taskInstances(pin)
 			c := instances[0]
 
-			if isIn(classesToIgnore, c.Class) {
-				log.Debugf("Ignoring instance '%s'", c.Class)
+			if isIn(classesToIgnore, c.Class) || isIn(alreadyAdded, c.Class) {
 				continue
 			}
 
-			if len(instances) == 1 {
-				button := taskButton(c, instances, position)
-				mainBox.PackStart(button, false, false, 0)
+			button := taskButton(c, instances, position)
+			mainBox.PackStart(button, false, false, 0)
 
-				if c.Class == activeClient.Class && !*autohide {
-					button.SetObjectProperty("name", "active")
-				} else {
-					button.SetObjectProperty("name", "")
-				}
-
-			} else if !isIn(alreadyAdded, c.Class) {
-				button := taskButton(c, instances, position)
-				mainBox.PackStart(button, false, false, 0)
-
-				if c.Class == activeClient.Class && !*autohide {
-					button.SetObjectProperty("name", "active")
-				} else {
-					button.SetObjectProperty("name", "")
-				}
-
-				alreadyAdded = append(alreadyAdded, c.Class)
-				clientMenu(c.Class, instances)
+			if c.Class == activeClient.Class && !*autohide {
+				button.SetObjectProperty("name", "active")
+			} else {
+				button.SetObjectProperty("name", "")
 			}
+
+			clientMenu(c.Class, instances)
+			alreadyAdded = append(alreadyAdded, c.Class)
+		} else {
+			button := pinnedButton(pin, position)
+			mainBox.PackStart(button, false, false, 0)
 		}
 	}
 
 	alreadyAdded = nil
 
 	for _, t := range clients {
-		// For some time after killing a client, it's still being returned by 'j/clients', however w/o the Class value.
-		// Let's filter the ghosts out.
-		if !inPinned(t.Class) && t.Class != "" {
-			instances := taskInstances(t.Class)
-			if !isIn(classesToIgnore, t.Class) {
-				if len(instances) == 1 {
-					button := taskButton(t, instances, position)
-					mainBox.PackStart(button, false, false, 0)
-					if t.Class == activeClient.Class && !*autohide {
-						button.SetObjectProperty("name", "active")
-					} else {
-						button.SetObjectProperty("name", "")
-					}
-				} else if !isIn(alreadyAdded, t.Class) {
-					button := taskButton(t, instances, position)
-					mainBox.PackStart(button, false, false, 0)
-					if t.Class == activeClient.Class && !*autohide {
-						button.SetObjectProperty("name", "active")
-					} else {
-						button.SetObjectProperty("name", "")
-					}
-					alreadyAdded = append(alreadyAdded, t.Class)
-					clientMenu(t.Class, instances)
-				} else {
-					continue
-				}
+		log.Info(inPinned(t.Class))
+
+		if isIn(classesToIgnore, t.Class) {
+			log.Debugf("Ignoring '%s'", t.Class)
+			continue
+		}
+
+		instances := taskInstances(t.Class)
+
+		if !isIn(alreadyAdded, t.Class) {
+			button := taskButton(t, instances, position)
+			mainBox.PackStart(button, false, false, 0)
+
+			if t.Class == activeClient.Class && !*autohide {
+				button.SetObjectProperty("name", "active")
 			} else {
-				log.Debugf("Ignoring '%s'", t.Class)
+				button.SetObjectProperty("name", "")
 			}
+
+			clientMenu(t.Class, instances)
+			alreadyAdded = append(alreadyAdded, t.Class)
 		}
 	}
 
