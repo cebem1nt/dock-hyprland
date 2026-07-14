@@ -120,66 +120,76 @@ func pinnedMenuContext(taskID string) gtk.Menu {
 }
 
 func launcherButton(position *string) *gtk.Box {
-	vertical = *position == "left" || *position == "right"
+	log.Info(*launcherCmd)
 
+	if *noLauncher || *launcherCmd == "" {
+		return nil
+	}
+
+	vertical = *position == "left" || *position == "right"
 	box := gtk.NewBox(gtk.OrientationVertical, 0)
+
 	if vertical {
 		box.SetOrientation(gtk.OrientationHorizontal)
 	}
 
-	if !*noLauncher && *launcherCmd != "" {
-		button := gtk.NewButton()
-		var pixbuf *gdkpixbuf.Pixbuf
-		var e error
-		if *ico == "" {
-			pixbuf, e = gdkpixbuf.NewPixbufFromFileAtSize(filepath.Join(dataHome, "nwg-dock-hyprland/images/grid.svg"), imgSizeScaled, imgSizeScaled)
-		} else {
-			pixbuf, e = createPixbuf(*ico, imgSizeScaled)
-		}
-		if e == nil {
-			image := gtk.NewImageFromPixbuf(pixbuf)
-			button.SetImage(image)
-			button.SetAlwaysShowImage(true)
+	button := gtk.NewButton()
 
-			button.Connect("clicked", func() {
-				elements := strings.Split(*launcherCmd, " ")
-				cmd := exec.Command(elements[0], elements[1:]...)
+	var pixbuf *gdkpixbuf.Pixbuf
+	var e error
 
-				go func() {
-					err := cmd.Run()
-					if err != nil {
-						log.Warnf("Unable to start program: %s", err.Error())
-					}
-				}()
-
-				if *autohide {
-					win.Hide()
-				}
-			})
-			button.Connect("enter-notify-event", cancelClose)
-
-			if !vertical {
-				pixbuf, e = gdkpixbuf.NewPixbufFromFileAtSize(filepath.Join(dataHome, "nwg-dock-hyprland/images/task-empty.svg"),
-					imgSizeScaled, imgSizeScaled/8)
-			} else {
-				pixbuf, e = gdkpixbuf.NewPixbufFromFileAtSize(filepath.Join(dataHome, "nwg-dock-hyprland/images/task-empty-vertical.svg"),
-					imgSizeScaled/8, imgSizeScaled)
-			}
-
-			if e == nil {
-				img := gtk.NewImageFromPixbuf(pixbuf)
-				if *position == "left" || *position == "top" {
-					box.PackStart(img, false, false, 0)
-					box.PackStart(button, false, false, 0)
-				} else {
-					box.PackStart(button, false, false, 0)
-					box.PackStart(img, false, false, 0)
-				}
-			}
-		}
-		return box
+	if *ico == "" {
+		pixbuf, e = gdkpixbuf.NewPixbufFromFileAtSize(filepath.Join(dataHome, "nwg-dock-hyprland/images/grid.svg"), imgSizeScaled, imgSizeScaled)
+	} else {
+		pixbuf, e = createPixbuf(*ico, imgSizeScaled)
 	}
-	return nil
+
+	if e != nil {
+		return nil
+	}
+
+	image := gtk.NewImageFromPixbuf(pixbuf)
+	button.SetImage(image)
+	button.SetAlwaysShowImage(true)
+
+	button.Connect("clicked", func() {
+		elements := strings.Split(*launcherCmd, " ")
+		cmd := exec.Command(elements[0], elements[1:]...)
+
+		go func() {
+			err := cmd.Run()
+			if err != nil {
+				log.Warnf("Unable to start program: %s", err.Error())
+			}
+		}()
+
+		if *autohide {
+			win.Hide()
+		}
+	})
+
+	button.Connect("enter-notify-event", cancelClose)
+
+	if !vertical {
+		pixbuf, e = gdkpixbuf.NewPixbufFromFileAtSize(filepath.Join(dataHome, "nwg-dock-hyprland/images/task-empty.svg"),
+			imgSizeScaled, imgSizeScaled/8)
+	} else {
+		pixbuf, e = gdkpixbuf.NewPixbufFromFileAtSize(filepath.Join(dataHome, "nwg-dock-hyprland/images/task-empty-vertical.svg"),
+			imgSizeScaled/8, imgSizeScaled)
+	}
+
+	if e == nil {
+		img := gtk.NewImageFromPixbuf(pixbuf)
+		if *position == "left" || *position == "top" {
+			box.PackStart(img, false, false, 0)
+			box.PackStart(button, false, false, 0)
+		} else {
+			box.PackStart(button, false, false, 0)
+			box.PackStart(img, false, false, 0)
+		}
+	}
+
+	return box
 }
 
 /*

@@ -213,6 +213,7 @@ func buildMainBox() {
 
 	if *launcherPos == "end" {
 		button := launcherButton(position)
+
 		if button != nil {
 			mainBox.PackStart(button, false, false, 0)
 		}
