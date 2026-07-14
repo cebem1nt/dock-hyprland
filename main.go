@@ -188,11 +188,7 @@ func buildMainBox() {
 		}
 	}
 
-	alreadyAdded = nil
-
 	for _, t := range clients {
-		log.Info(inPinned(t.Class))
-
 		if isIn(classesToIgnore, t.Class) {
 			log.Debugf("Ignoring '%s'", t.Class)
 			continue
