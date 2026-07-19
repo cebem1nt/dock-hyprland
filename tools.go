@@ -120,8 +120,6 @@ func pinnedMenuContext(taskID string) gtk.Menu {
 }
 
 func launcherButton(position *string) *gtk.Box {
-	log.Info(*launcherCmd)
-
 	if *noLauncher || *launcherCmd == "" {
 		return nil
 	}
@@ -133,7 +131,7 @@ func launcherButton(position *string) *gtk.Box {
 		box.SetOrientation(gtk.OrientationHorizontal)
 	}
 
-	button := gtk.NewButton()
+	btn := gtk.NewButton()
 
 	var pixbuf *gdkpixbuf.Pixbuf
 	var e error
@@ -149,10 +147,10 @@ func launcherButton(position *string) *gtk.Box {
 	}
 
 	image := gtk.NewImageFromPixbuf(pixbuf)
-	button.SetImage(image)
-	button.SetAlwaysShowImage(true)
+	btn.SetImage(image)
+	btn.SetAlwaysShowImage(true)
 
-	button.Connect("clicked", func() {
+	btn.Connect("clicked", func() {
 		elements := strings.Split(*launcherCmd, " ")
 		cmd := exec.Command(elements[0], elements[1:]...)
 
@@ -163,12 +161,9 @@ func launcherButton(position *string) *gtk.Box {
 			}
 		}()
 
-		if *autohide {
-			win.Hide()
-		}
 	})
 
-	button.Connect("enter-notify-event", cancelClose)
+	btn.Connect("enter-notify-event", cancelClose)
 
 	if !vertical {
 		pixbuf, e = gdkpixbuf.NewPixbufFromFileAtSize(filepath.Join(dataHome, "nwg-dock-hyprland/images/task-empty.svg"),
@@ -182,9 +177,9 @@ func launcherButton(position *string) *gtk.Box {
 		img := gtk.NewImageFromPixbuf(pixbuf)
 		if *position == "left" || *position == "top" {
 			box.PackStart(img, false, false, 0)
-			box.PackStart(button, false, false, 0)
+			box.PackStart(btn, false, false, 0)
 		} else {
-			box.PackStart(button, false, false, 0)
+			box.PackStart(btn, false, false, 0)
 			box.PackStart(img, false, false, 0)
 		}
 	}
@@ -217,8 +212,6 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 
 	image, _ := createImage(t.Class, imgSizeScaled)
 	if image == nil {
-		//var pixbuf *gdk.Pixbuf
-		//var err error
 		pixbuf, err := gdkpixbuf.NewPixbufFromFileAtSize(filepath.Join(dataHome, "nwg-dock-hyprland/images/icon-missing.svg"),
 			imgSizeScaled, imgSizeScaled)
 
@@ -238,6 +231,7 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 	var img *gtk.Image
 	var pixbuf *gdkpixbuf.Pixbuf
 	var err error
+
 	if len(instances) > 1 {
 		if !vertical {
 			pixbuf, err = gdkpixbuf.NewPixbufFromFileAtSize(filepath.Join(dataHome, "nwg-dock-hyprland/images/task-multiple.svg"),
@@ -286,6 +280,10 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 		if btnEvent.Button() == 1 {
 			if len(instances) == 1 {
 				focusWindow(t)
+
+				glib.IdleAdd(func() {
+					btn.UnsetStateFlags(gtk.StateFlagPrelight)
+				})
 			} else {
 				menu := clientMenu(t.Class, instances)
 				menu.Connect("hide", func() {
@@ -296,10 +294,6 @@ func taskButton(t client, instances []client, position *string) *gtk.Box {
 			}
 		} else if btnEvent.Button() == 2 {
 			launch(t.Class)
-			glib.TimeoutAdd(50, func() bool {
-				btn.UnsetStateFlags(gtk.StateFlagPrelight)
-				return false
-			})
 		} else if btnEvent.Button() == 3 {
 			contextMenu := clientMenuContext(t.Class, instances)
 			contextMenu.Connect("hide", func() {
@@ -972,13 +966,8 @@ func launch(ID string) {
 	}
 
 	cmd := fmt.Sprintf("dispatch hl.dsp.exec_cmd('%s')", command)
-
 	if _, err := hyprctl(cmd); err != nil {
 		log.Error("Unable to launch command!", err.Error())
-	}
-
-	if *autohide {
-		win.Hide()
 	}
 }
 
